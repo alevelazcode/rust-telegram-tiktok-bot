@@ -8,7 +8,8 @@
       "Bash(cargo test)",
       "WebFetch(domain:www.tikwm.com)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:cheatsheetseries.owasp.org)"
+      "WebFetch(domain:cheatsheetseries.owasp.org)",
+      "Bash(cargo test all_fields_present -- --nocapture)"
     ]
   }
 }
