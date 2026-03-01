@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build)",
+      "WebFetch(domain:core.telegram.org)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:oneuptime.com)",
+      "Bash(cargo test)",
+      "WebFetch(domain:www.tikwm.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:cheatsheetseries.owasp.org)"
+    ]
+  }
+}
