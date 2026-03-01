@@ -301,6 +301,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_oversized_api_response() {
+        let server = MockServer::start().await;
+
+        // Return a body larger than MAX_API_RESPONSE_BYTES (1 MB)
+        let oversized_body = "x".repeat(MAX_API_RESPONSE_BYTES + 1);
+        Mock::given(method("POST"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(oversized_body))
+            .mount(&server)
+            .await;
+
+        let client = Client::new();
+        let result =
+            fetch_video_info(&client, &format!("{}/", server.uri()), "https://tiktok.com/v/789")
+                .await;
+
+        assert!(matches!(result.unwrap_err(), BotError::TikTokApi(_)));
+    }
+
+    #[tokio::test]
     async fn fetch_video_info_api_error() {
         let server = MockServer::start().await;
 
