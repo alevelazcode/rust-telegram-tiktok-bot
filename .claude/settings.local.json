@@ -9,7 +9,32 @@
       "WebFetch(domain:www.tikwm.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:cheatsheetseries.owasp.org)",
-      "Bash(cargo test all_fields_present -- --nocapture)"
+      "Bash(cargo test all_fields_present -- --nocapture)",
+      "Bash(cargo doc --document-private-items -p teloxide)",
+      "Bash(cargo tree -p teloxide)",
+      "Bash(cargo search anyhow --limit 1)",
+      "Bash(cargo search chrono --limit 1)",
+      "Bash(cargo search config --limit 1)",
+      "Bash(cargo search dashmap --limit 1)",
+      "Bash(cargo search dotenvy --limit 1)",
+      "Bash(cargo search futures --limit 1)",
+      "Bash(cargo search governor --limit 1)",
+      "Bash(cargo search nonzero_ext --limit 1)",
+      "Bash(cargo search reqwest --limit 1)",
+      "Bash(cargo search serde --limit 1)",
+      "Bash(cargo search serde_json --limit 1)",
+      "Bash(cargo search teloxide --limit 1)",
+      "Bash(cargo search teloxide-core --limit 1)",
+      "Bash(cargo search tempfile --limit 1)",
+      "Bash(cargo search thiserror --limit 1)",
+      "Bash(cargo search tokio --limit 1)",
+      "Bash(cargo search tracing --limit 1)",
+      "Bash(cargo search tracing-subscriber --limit 1)",
+      "Bash(cargo search url --limit 1)",
+      "Bash(cargo search rstest --limit 1)",
+      "Bash(cargo search wiremock --limit 1)",
+      "Bash(cargo update)",
+      "Bash(cargo update -p governor -p rstest)"
     ]
   }
 }

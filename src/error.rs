@@ -40,6 +40,9 @@ pub enum BotError {
 
     #[error("Video compression failed: {0}")]
     CompressionFailed(String),
+
+    #[error("User queue is full")]
+    UserQueueFull,
 }
 
 impl BotError {
@@ -64,6 +67,7 @@ impl BotError {
             BotError::TooManyDownloads => "\u{1f6a6} The bot is currently busy with other downloads. Please try again in a moment.".to_string(),
             BotError::UnsafeUrl => "\u{1f6ab} The video URL could not be verified as safe. Please try a different link.".to_string(),
             BotError::CompressionFailed(_) => "\u{26a0}\u{fe0f} The video is too large and could not be compressed to fit Telegram's 50 MB limit. Try a shorter video.".to_string(),
+            BotError::UserQueueFull => "\u{1f4e5} You already have too many videos queued. Please wait for the current ones to finish.".to_string(),
             BotError::Config(_) | BotError::UrlParse(_) => "\u{26a0}\u{fe0f} An internal error occurred. Please try again later.".to_string(),
         }
     }

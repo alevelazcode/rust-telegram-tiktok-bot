@@ -17,6 +17,7 @@ use crate::security::inflight_tracker::{InflightGuard, InflightTracker};
 use crate::security::rate_limiter::UserRateLimiter;
 use crate::security::retry::with_retry;
 use crate::security::url_validator::validate_download_url;
+use crate::security::user_queue::{UserQueue, acquire_user_slot};
 use crate::tiktok::detector::extract_tiktok_urls;
 use crate::tiktok::downloader::{download_to_file, fetch_video_info};
 
@@ -37,6 +38,7 @@ pub async fn handle_message(
     rate_limiter: Arc<UserRateLimiter>,
     download_semaphore: DownloadSemaphore,
     inflight_tracker: InflightTracker,
+    user_queue: UserQueue,
 ) -> Result<(), BotError> {
     let text = match msg.text() {
         Some(t) => t,
@@ -84,8 +86,15 @@ pub async fn handle_message(
 
     for tiktok_url in &tiktok_urls {
         // Skip URLs already being processed (e.g. same link sent multiple times)
-        let Some(_guard) = InflightGuard::try_acquire(&inflight_tracker, tiktok_url) else {
+        let Some(_inflight_guard) = InflightGuard::try_acquire(&inflight_tracker, tiktok_url) else {
             tracing::info!(url = %tiktok_url, "Skipping duplicate URL already in progress");
+            continue;
+        };
+
+        // Wait for this user's turn (max 1 active + 4 queued per user)
+        let Some(_slot_guard) = acquire_user_slot(&user_queue, user_id.0).await else {
+            tracing::warn!(user_id = user_id.0, "User queue full");
+            let _ = notifier.send_error(&BotError::UserQueueFull.user_friendly_message()).await;
             continue;
         };
 
@@ -98,7 +107,7 @@ pub async fn handle_message(
                 let _ = notifier.send_error(&e.user_friendly_message()).await;
             }
         }
-        // _guard is dropped here, removing the URL from the tracker
+        // Guards dropped here: releases user slot + removes URL from tracker
     }
 
     Ok(())
