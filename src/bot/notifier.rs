@@ -1,18 +1,7 @@
-use std::time::Duration;
-
-use reqwest::Client;
 use teloxide::prelude::*;
 use teloxide::types::{ChatAction, InputFile, MessageId, ReplyParameters};
 
 use crate::error::BotError;
-use crate::security::url_validator::validate_download_url;
-use crate::tiktok::downloader::VideoInfo;
-
-/// Max time to wait for a thumbnail download before skipping it.
-const THUMBNAIL_TIMEOUT_SECS: u64 = 5;
-
-/// Maximum thumbnail size (5 MB). Prevents memory exhaustion from oversized images.
-const MAX_THUMBNAIL_BYTES: usize = 5 * 1024 * 1024;
 
 /// Responsible for all Telegram message interactions during video processing.
 /// Follows SRP: only handles user-facing notifications, not download logic.
@@ -37,51 +26,6 @@ impl<'a> ChatNotifier<'a> {
 
     pub fn chat_id(&self) -> ChatId {
         self.chat_id
-    }
-
-    /// Downloads thumbnail locally and sends it, with a short timeout.
-    /// Avoids passing CDN URLs directly to Telegram (which may fail due to
-    /// expired tokens, region blocks, or required headers).
-    pub async fn send_thumbnail(&self, info: &VideoInfo, client: &Client) {
-        let Some(ref cover_url) = info.metadata.cover_url else {
-            return;
-        };
-
-        // SSRF check: the cover URL comes from the API and could point anywhere
-        if validate_download_url(cover_url).is_err() {
-            tracing::warn!(url = %cover_url, "Thumbnail URL failed SSRF validation");
-            return;
-        }
-
-        let result = tokio::time::timeout(Duration::from_secs(THUMBNAIL_TIMEOUT_SECS), async {
-            let response = client.get(cover_url).send().await.ok()?;
-
-            // Reject oversized thumbnails before reading into memory
-            if let Some(len) = response.content_length() {
-                if len > MAX_THUMBNAIL_BYTES as u64 {
-                    return None;
-                }
-            }
-
-            let bytes = response.bytes().await.ok()?;
-            if bytes.len() > MAX_THUMBNAIL_BYTES {
-                return None;
-            }
-            Some(bytes)
-        })
-        .await;
-
-        match result {
-            Ok(Some(bytes)) => {
-                let _ = self
-                    .bot
-                    .send_photo(self.chat_id, InputFile::memory(bytes).file_name("cover.jpg"))
-                    .await;
-            }
-            _ => {
-                tracing::debug!(url = %cover_url, "Thumbnail download skipped (timeout or error)");
-            }
-        }
     }
 
     pub async fn send_progress_message(&self, text: &str) -> Result<MessageId, BotError> {

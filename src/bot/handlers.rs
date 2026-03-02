@@ -120,9 +120,7 @@ async fn process_tiktok_url(
     })
     .await?;
 
-    // Step 2: Send thumbnail preview + progress message
-    notifier.send_thumbnail(&info, client).await;
-
+    // Step 2: Send progress message
     let initial_text = progress::build_initial_message(&info);
     let progress_msg_id = notifier.send_progress_message(&initial_text).await?;
 

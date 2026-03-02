@@ -29,6 +29,7 @@ pub struct VideoMetadata {
     pub title: Option<String>,
     pub duration_secs: Option<u32>,
     pub file_size_bytes: u64,
+    #[allow(dead_code)]
     pub cover_url: Option<String>,
     #[allow(dead_code)]
     pub create_time: Option<i64>,
