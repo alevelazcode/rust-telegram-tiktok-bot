@@ -7,7 +7,9 @@ use crate::error::BotError;
 use crate::security::temp_cleaner::get_temp_dir;
 use crate::tiktok::models::DownloadedFile;
 
-const TELEGRAM_FILE_SIZE_LIMIT: u64 = 50 * 1024 * 1024; // 50 MB
+/// Maximum download size. Larger than Telegram's 50 MB limit because videos
+/// exceeding that limit will be compressed with ffmpeg before sending.
+const MAX_DOWNLOAD_SIZE: u64 = 200 * 1024 * 1024; // 200 MB
 const BUF_WRITER_CAPACITY: usize = 64 * 1024; // 64 KB
 
 // Re-export public types so existing imports from `downloader` keep working.
@@ -32,7 +34,7 @@ where
     let total_bytes = response.content_length();
 
     if let Some(content_length) = total_bytes {
-        if content_length > TELEGRAM_FILE_SIZE_LIMIT {
+        if content_length > MAX_DOWNLOAD_SIZE {
             return Err(BotError::FileTooLarge {
                 size_mb: content_length as f64 / (1024.0 * 1024.0),
             });
@@ -51,7 +53,7 @@ where
         let chunk = chunk?;
         downloaded += chunk.len() as u64;
 
-        if downloaded > TELEGRAM_FILE_SIZE_LIMIT {
+        if downloaded > MAX_DOWNLOAD_SIZE {
             return Err(BotError::FileTooLarge {
                 size_mb: downloaded as f64 / (1024.0 * 1024.0),
             });

@@ -37,6 +37,9 @@ pub enum BotError {
 
     #[error("The download URL failed safety validation")]
     UnsafeUrl,
+
+    #[error("Video compression failed: {0}")]
+    CompressionFailed(String),
 }
 
 impl BotError {
@@ -60,6 +63,7 @@ impl BotError {
             BotError::RateLimited => "\u{23f3} You're sending too many requests. Please wait a minute before trying again.".to_string(),
             BotError::TooManyDownloads => "\u{1f6a6} The bot is currently busy with other downloads. Please try again in a moment.".to_string(),
             BotError::UnsafeUrl => "\u{1f6ab} The video URL could not be verified as safe. Please try a different link.".to_string(),
+            BotError::CompressionFailed(_) => "\u{26a0}\u{fe0f} The video is too large and could not be compressed to fit Telegram's 50 MB limit. Try a shorter video.".to_string(),
             BotError::Config(_) | BotError::UrlParse(_) => "\u{26a0}\u{fe0f} An internal error occurred. Please try again later.".to_string(),
         }
     }

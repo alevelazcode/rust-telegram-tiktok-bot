@@ -7,11 +7,13 @@ use teloxide::types::ReplyParameters;
 use std::sync::Mutex;
 
 use crate::bot::caption::build_caption;
+use crate::bot::compressor::compress_video;
 use crate::bot::notifier::ChatNotifier;
 use crate::bot::progress;
 use crate::config::AppConfig;
 use crate::error::BotError;
 use crate::security::download_guard::DownloadSemaphore;
+use crate::security::inflight_tracker::{InflightGuard, InflightTracker};
 use crate::security::rate_limiter::UserRateLimiter;
 use crate::security::retry::with_retry;
 use crate::security::url_validator::validate_download_url;
@@ -34,6 +36,7 @@ pub async fn handle_message(
     client: Client,
     rate_limiter: Arc<UserRateLimiter>,
     download_semaphore: DownloadSemaphore,
+    inflight_tracker: InflightTracker,
 ) -> Result<(), BotError> {
     let text = match msg.text() {
         Some(t) => t,
@@ -80,6 +83,12 @@ pub async fn handle_message(
     let notifier = ChatNotifier::new(&bot, msg.chat.id, msg.id);
 
     for tiktok_url in &tiktok_urls {
+        // Skip URLs already being processed (e.g. same link sent multiple times)
+        let Some(_guard) = InflightGuard::try_acquire(&inflight_tracker, tiktok_url) else {
+            tracing::info!(url = %tiktok_url, "Skipping duplicate URL already in progress");
+            continue;
+        };
+
         match process_tiktok_url(&notifier, &config, &client, tiktok_url, &download_semaphore)
             .await
         {
@@ -89,6 +98,7 @@ pub async fn handle_message(
                 let _ = notifier.send_error(&e.user_friendly_message()).await;
             }
         }
+        // _guard is dropped here, removing the URL from the tracker
     }
 
     Ok(())
@@ -178,22 +188,51 @@ async fn process_tiktok_url(
     // Release download permit
     drop(permit);
 
-    let actual_size = downloaded.actual_size;
+    let original_size = downloaded.actual_size;
     tracing::info!(
-        size_mb = format!("{:.1}", actual_size as f64 / (1024.0 * 1024.0)).as_str(),
+        size_mb = format!("{:.1}", original_size as f64 / (1024.0 * 1024.0)).as_str(),
         "Video downloaded"
     );
 
-    // Step 6: Update progress message
+    // Step 6: Compress if the video exceeds Telegram's 50 MB limit
+    const TELEGRAM_UPLOAD_LIMIT: u64 = 50 * 1024 * 1024;
+
+    let (send_path, send_size) = if original_size > TELEGRAM_UPLOAD_LIMIT {
+        let duration = info_arc.metadata.duration_secs.ok_or_else(|| {
+            BotError::FileTooLarge {
+                size_mb: original_size as f64 / (1024.0 * 1024.0),
+            }
+        })?;
+
+        notifier
+            .update_progress(
+                progress_msg_id,
+                "\u{1f3ac} Compressing video to fit Telegram limit...",
+            )
+            .await;
+
+        let compressed = compress_video(&downloaded.file_path, duration).await?;
+        let size = compressed.actual_size;
+        tracing::info!(
+            original_mb = format!("{:.1}", original_size as f64 / (1024.0 * 1024.0)).as_str(),
+            compressed_mb = format!("{:.1}", size as f64 / (1024.0 * 1024.0)).as_str(),
+            "Video compressed"
+        );
+        (compressed.file_path.clone(), size)
+    } else {
+        (downloaded.file_path.clone(), original_size)
+    };
+
+    // Step 7: Update progress message
     notifier
         .update_progress(progress_msg_id, "\u{1f4e4} Sending video to chat...")
         .await;
 
-    // Step 7: Send video with rich caption and metadata
-    let caption = build_caption(&info_arc.metadata, actual_size);
+    // Step 8: Send video with rich caption and metadata
+    let caption = build_caption(&info_arc.metadata, send_size);
     notifier
         .send_video(
-            &downloaded.file_path,
+            &send_path,
             &caption,
             info_arc.metadata.duration_secs,
         )

@@ -5,7 +5,8 @@ use serde::Deserialize;
 use crate::error::BotError;
 use crate::tiktok::models::{AuthorInfo, VideoInfo, VideoMetadata, VideoStats};
 
-const TELEGRAM_FILE_SIZE_LIMIT: u64 = 50 * 1024 * 1024; // 50 MB
+/// Maximum file size we'll attempt to download (can be compressed afterward).
+const MAX_DOWNLOAD_SIZE: u64 = 200 * 1024 * 1024; // 200 MB
 
 /// Maximum API response size (1 MB). Prevents memory exhaustion from a
 /// compromised or malicious API endpoint returning an oversized body.
@@ -153,7 +154,7 @@ pub async fn fetch_video_info(
     let response_text = read_limited_body(response, MAX_API_RESPONSE_BYTES).await?;
     let info = parse_api_response(&response_text)?;
 
-    if info.metadata.file_size_bytes > TELEGRAM_FILE_SIZE_LIMIT {
+    if info.metadata.file_size_bytes > MAX_DOWNLOAD_SIZE {
         return Err(BotError::FileTooLarge {
             size_mb: info.metadata.file_size_bytes as f64 / (1024.0 * 1024.0),
         });

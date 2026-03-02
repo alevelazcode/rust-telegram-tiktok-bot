@@ -1,4 +1,5 @@
 pub mod caption;
+pub mod compressor;
 pub mod handlers;
 pub mod notifier;
 pub mod progress;
@@ -11,6 +12,7 @@ use teloxide::prelude::*;
 use crate::config::AppConfig;
 use crate::error::BotError;
 use crate::security::download_guard::create_download_semaphore;
+use crate::security::inflight_tracker::create_inflight_tracker;
 use crate::security::rate_limiter::create_rate_limiter;
 use crate::security::temp_cleaner::spawn_temp_cleaner;
 use handlers::handle_message;
@@ -34,6 +36,7 @@ pub async fn run(config: AppConfig) {
     let client = create_http_client().expect("Failed to create HTTP client");
     let rate_limiter = create_rate_limiter();
     let download_semaphore = create_download_semaphore();
+    let inflight_tracker = create_inflight_tracker();
 
     // Start background temp file cleaner
     spawn_temp_cleaner();
@@ -41,7 +44,7 @@ pub async fn run(config: AppConfig) {
     let handler = Update::filter_message().endpoint(handle_message);
 
     Dispatcher::builder(bot, handler)
-        .dependencies(dptree::deps![config, client, rate_limiter, download_semaphore])
+        .dependencies(dptree::deps![config, client, rate_limiter, download_semaphore, inflight_tracker])
         .default_handler(|upd| async move {
             tracing::debug!("Unhandled update: {:?}", upd);
         })

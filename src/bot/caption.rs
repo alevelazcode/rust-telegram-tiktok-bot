@@ -10,13 +10,13 @@ fn format_count(n: u64) -> String {
     }
 }
 
-pub fn build_caption(metadata: &VideoMetadata, file_size: u64) -> String {
-    let mut lines: Vec<String> = Vec::with_capacity(8);
+/// Telegram's maximum caption length for media messages.
+const TELEGRAM_CAPTION_LIMIT: usize = 1024;
 
-    // Title
-    if let Some(ref title) = metadata.title {
-        lines.push(title.clone());
-    }
+pub fn build_caption(metadata: &VideoMetadata, file_size: u64) -> String {
+    // Build info lines (everything except title) first, so we know how much
+    // space remains for the title and can truncate it if needed.
+    let mut info_lines: Vec<String> = Vec::with_capacity(8);
 
     // Author
     if let Some(ref author) = metadata.author {
@@ -27,35 +27,35 @@ pub fn build_caption(metadata: &VideoMetadata, file_size: u64) -> String {
             (None, None) => String::new(),
         };
         if !display.is_empty() {
-            lines.push(display);
+            info_lines.push(display);
         }
     }
 
     // Stats — each on its own line for readability
     if let Some(plays) = metadata.stats.play_count {
-        lines.push(format!("\u{25b6}\u{fe0f} {} views", format_count(plays)));
+        info_lines.push(format!("\u{25b6}\u{fe0f} {} views", format_count(plays)));
     }
     if let Some(likes) = metadata.stats.like_count {
-        lines.push(format!("\u{2764}\u{fe0f} {} likes", format_count(likes)));
+        info_lines.push(format!("\u{2764}\u{fe0f} {} likes", format_count(likes)));
     }
     if let Some(comments) = metadata.stats.comment_count {
-        lines.push(format!("\u{1f4ac} {} comments", format_count(comments)));
+        info_lines.push(format!("\u{1f4ac} {} comments", format_count(comments)));
     }
     if let Some(shares) = metadata.stats.share_count {
-        lines.push(format!("\u{1f504} {} shares", format_count(shares)));
+        info_lines.push(format!("\u{1f504} {} shares", format_count(shares)));
     }
 
     // Duration
     if let Some(duration) = metadata.duration_secs {
         let mins = duration / 60;
         let secs = duration % 60;
-        lines.push(format!("\u{23f1}\u{fe0f} {}:{:02}", mins, secs));
+        info_lines.push(format!("\u{23f1}\u{fe0f} {}:{:02}", mins, secs));
     }
 
     // File size
     if file_size > 0 {
         let size_mb = file_size as f64 / (1024.0 * 1024.0);
-        lines.push(format!("\u{1f4be} {:.1} MB", size_mb));
+        info_lines.push(format!("\u{1f4be} {:.1} MB", size_mb));
     }
 
     // Music
@@ -64,10 +64,42 @@ pub fn build_caption(metadata: &VideoMetadata, file_size: u64) -> String {
             Some(ref author) => format!("\u{1f3b5} {} - {}", author, music),
             None => format!("\u{1f3b5} {}", music),
         };
-        lines.push(music_str);
+        info_lines.push(music_str);
     }
 
-    lines.join("\n")
+    // Prepend title, truncating if needed to stay within Telegram's caption limit
+    let info_section = info_lines.join("\n");
+
+    match metadata.title {
+        Some(ref title) if !title.is_empty() => {
+            // +1 for the newline between title and info
+            let available = TELEGRAM_CAPTION_LIMIT.saturating_sub(info_section.len() + 1);
+            let truncated_title = truncate_str(title, available);
+            if info_section.is_empty() {
+                truncated_title
+            } else {
+                format!("{}\n{}", truncated_title, info_section)
+            }
+        }
+        _ => info_section,
+    }
+}
+
+/// Truncates a string to fit within `max_chars`, appending "..." if truncated.
+/// Respects char boundaries so it never splits a multi-byte character.
+fn truncate_str(s: &str, max_chars: usize) -> String {
+    if s.len() <= max_chars {
+        return s.to_string();
+    }
+    // Reserve 3 chars for "..."
+    let limit = max_chars.saturating_sub(3);
+    let end = s
+        .char_indices()
+        .map(|(i, _)| i)
+        .take_while(|&i| i <= limit)
+        .last()
+        .unwrap_or(0);
+    format!("{}...", &s[..end])
 }
 
 #[cfg(test)]
@@ -212,5 +244,42 @@ mod tests {
         m.music_title = Some("Song".into());
         m.music_author = Some("Artist".into());
         assert!(build_caption(&m, 0).contains("Artist - Song"));
+    }
+
+    #[test]
+    fn caption_truncates_long_title() {
+        let mut m = minimal_metadata();
+        // Create a title that would exceed 1024 chars when combined with other fields
+        m.title = Some("a]".repeat(600));
+        m.stats.like_count = Some(1000);
+        m.duration_secs = Some(30);
+        let caption = build_caption(&m, 1024 * 1024);
+        assert!(
+            caption.len() <= TELEGRAM_CAPTION_LIMIT,
+            "Caption was {} chars, limit is {}",
+            caption.len(),
+            TELEGRAM_CAPTION_LIMIT
+        );
+        assert!(caption.contains("..."));
+        assert!(caption.contains("1.0K likes"));
+    }
+
+    #[test]
+    fn caption_preserves_short_title() {
+        let mut m = minimal_metadata();
+        m.title = Some("Short title".into());
+        m.stats.like_count = Some(500);
+        let caption = build_caption(&m, 0);
+        assert!(caption.starts_with("Short title\n"));
+        assert!(!caption.contains("..."));
+    }
+
+    #[test]
+    fn truncate_respects_char_boundaries() {
+        // Emoji string — must not panic or split mid-character
+        let emoji_title = "\u{1f525}".repeat(300);
+        let truncated = truncate_str(&emoji_title, 50);
+        assert!(truncated.len() <= 50);
+        assert!(truncated.ends_with("..."));
     }
 }
